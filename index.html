@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Office Clock In/Out</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <style>
+    /* ---- REEMPLAZÁ ESTA URL con la tuya de Apps Script ---- */
+    /* Ver instrucciones abajo */
+
+    :root {
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --border: #dedad2;
+      --fg: #1a1a16;
+      --fg2: #6b6860;
+      --accent: #1a6b3c;
+      --accent-fg: #ffffff;
+      --danger: #c0392b;
+      --melu:     #2563a8;
+      --marce:    #7c3aaa;
+      --estrella: #b5321e;
+      --in-bg: #edf7f1;
+      --in-fg: #1a6b3c;
+      --r: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111108; --surface: #1c1c12; --border: #2a2a1e;
+        --fg: #eee9db; --fg2: #948e7e; --accent: #2d9e5a; --accent-fg: #fff;
+        --danger: #e05545; --melu: #5b9de8; --marce: #b07de0; --estrella: #e06050;
+        --in-bg: #0e2218; --in-fg: #3dab6a;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      padding: 24px 16px 48px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+    h1 { font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+    .subtitle { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+    #clock { font-size: 14px; font-weight: 600; color: var(--fg2); font-variant-numeric: tabular-nums; text-align: right; }
+    #date-display { font-size: 11px; color: var(--fg2); text-align: right; }
+
+    .staff-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 16px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .avatar {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 15px; color: #fff;
+      flex-shrink: 0;
+    }
+    .card-name { font-weight: 700; font-size: 16px; }
+    .badge {
+      font-size: 11px; font-weight: 600;
+      padding: 3px 9px; border-radius: 20px;
+      margin-left: auto;
+      transition: background .2s, color .2s;
+    }
+    .badge-out { background: color-mix(in srgb, var(--fg2) 12%, transparent); color: var(--fg2); }
+    .badge-in  { background: var(--in-bg); color: var(--in-fg); }
+
+    .card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      flex: 1; padding: 11px 0; border-radius: 8px;
+      font-size: 14px; font-weight: 700; border: none; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { opacity: .75; transform: scale(.98); }
+    .btn-in  { background: var(--accent); color: var(--accent-fg); }
+    .btn-out { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+    .btn:disabled { opacity: .3; cursor: default; transform: none; }
+
+    .session-box {
+      background: var(--in-bg);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      display: none;
+    }
+    .session-box.visible { display: block; }
+    .session-time { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--in-fg); font-size: 15px; }
+    .session-label { color: var(--fg2); font-size: 11px; margin-top: 2px; }
+
+    .status-msg {
+      font-size: 11px;
+      text-align: center;
+      min-height: 16px;
+      color: var(--fg2);
+    }
+    .status-msg.ok    { color: var(--in-fg); }
+    .status-msg.error { color: var(--danger); }
+
+    @media (max-width: 420px) {
+      .staff-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="top">
+  <div>
+    <h1>Office Clock In/Out</h1>
+    <div class="subtitle">Maccabi Games 2026 · T-Shirts & IDs</div>
+  </div>
+  <div>
+    <div id="clock">--:-- --</div>
+    <div id="date-display"></div>
+  </div>
+</div>
+
+<div class="staff-grid" id="staff-grid"></div>
+
+<script>
+// ================================================================
+// 👇 REEMPLAZÁ ESTA URL con la URL de tu Apps Script desplegado
+// ================================================================
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyvXTcWhaBVhKvPXfUW5LS8DJGKdW9aRvX_XVupVKNjt6aDPOY3BrNujZEYslUSivL/exec";
+// ================================================================
+
+const STAFF = [
+  { id: "melu",     name: "Melu",     color: "#2563a8" },
+  { id: "marce",    name: "Marce",    color: "#7c3aaa" },
+  { id: "estrella", name: "Estrella", color: "#b5321e" },
+];
+
+// Estado local (para el timer de duración)
+const state = {};
+STAFF.forEach(s => {
+  state[s.id] = {
+    isIn: false,
+    clockedInAt: null,
+    timerEl: null,
+    timerInterval: null,
+  };
+});
+
+// --- Reloj ---
+function tickClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  document.getElementById("date-display").textContent =
+    now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// --- Envío a Google Sheets ---
+async function sendToSheet(name, action) {
+  if (SCRIPT_URL === "PEGAR_URL_AQUI") {
+    console.warn("URL del script no configurada");
+    return true; // funciona en modo demo
+  }
+  try {
+    const url = `${SCRIPT_URL}?action=${action}&name=${encodeURIComponent(name)}&ts=${Date.now()}`;
+    await fetch(url, { mode: "no-cors" });
+    return true;
+  } catch (e) {
+    console.error("Error enviando a Sheets:", e);
+    return false;
+  }
+}
+
+// --- Timer de duración ---
+function startTimer(id) {
+  const s = state[id];
+  if (s.timerInterval) clearInterval(s.timerInterval);
+  s.timerInterval = setInterval(() => {
+    if (!s.clockedInAt || !s.timerEl) return;
+    const ms = Date.now() - s.clockedInAt;
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const sec = Math.floor((ms % 60000) / 1000);
+    s.timerEl.textContent = h > 0
+      ? `${h}h ${String(m).padStart(2,"0")}m ${String(sec).padStart(2,"0")}s`
+      : `${m}m ${String(sec).padStart(2,"0")}s`;
+  }, 1000);
+}
+
+function stopTimer(id) {
+  const s = state[id];
+  if (s.timerInterval) { clearInterval(s.timerInterval); s.timerInterval = null; }
+}
+
+// --- Clock In ---
+async function clockIn(id, name) {
+  const s = state[id];
+  if (s.isIn) return;
+
+  const btnIn  = document.getElementById("btn-in-"  + id);
+  const btnOut = document.getElementById("btn-out-" + id);
+  const badge  = document.getElementById("badge-"  + id);
+  const box    = document.getElementById("box-"    + id);
+  const msg    = document.getElementById("msg-"    + id);
+
+  btnIn.disabled = true;
+  msg.textContent = "Saving…";
+  msg.className = "status-msg";
+
+  const ok = await sendToSheet(name, "in");
+
+  if (ok) {
+    s.isIn = true;
+    s.clockedInAt = Date.now();
+    btnOut.disabled = false;
+    badge.textContent = "● Clocked in";
+    badge.className = "badge badge-in";
+    box.classList.add("visible");
+    s.timerEl = document.getElementById("timer-" + id);
+    startTimer(id);
+    const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    document.getElementById("in-time-" + id).textContent = `Since ${timeStr}`;
+    msg.textContent = "✓ Saved";
+    msg.className = "status-msg ok";
+    setTimeout(() => { msg.textContent = ""; }, 3000);
+  } else {
+    btnIn.disabled = false;
+    msg.textContent = "⚠ Could not save — try again";
+    msg.className = "status-msg error";
+  }
+}
+
+// --- Clock Out ---
+async function clockOut(id, name) {
+  const s = state[id];
+  if (!s.isIn) return;
+
+  const btnIn  = document.getElementById("btn-in-"  + id);
+  const btnOut = document.getElementById("btn-out-" + id);
+  const badge  = document.getElementById("badge-"  + id);
+  const box    = document.getElementById("box-"    + id);
+  const msg    = document.getElementById("msg-"    + id);
+
+  btnOut.disabled = true;
+  msg.textContent = "Saving…";
+  msg.className = "status-msg";
+
+  const ok = await sendToSheet(name, "out");
+
+  if (ok) {
+    stopTimer(id);
+    s.isIn = false;
+    s.clockedInAt = null;
+    btnIn.disabled = false;
+    badge.textContent = "Clocked out";
+    badge.className = "badge badge-out";
+    box.classList.remove("visible");
+    if (s.timerEl) s.timerEl.textContent = "0m 00s";
+    msg.textContent = "✓ Saved";
+    msg.className = "status-msg ok";
+    setTimeout(() => { msg.textContent = ""; }, 3000);
+  } else {
+    btnOut.disabled = false;
+    msg.textContent = "⚠ Could not save — try again";
+    msg.className = "status-msg error";
+  }
+}
+
+// --- Render ---
+function buildGrid() {
+  document.getElementById("staff-grid").innerHTML = STAFF.map(s => `
+    <div class="card">
+      <div class="card-header">
+        <div class="avatar" style="background:${s.color}">${s.name.slice(0,2).toUpperCase()}</div>
+        <div class="card-name">${s.name}</div>
+        <div class="badge badge-out" id="badge-${s.id}">Clocked out</div>
+      </div>
+      <div class="card-body">
+        <div class="btn-row">
+          <button class="btn btn-in"  id="btn-in-${s.id}"  onclick="clockIn('${s.id}','${s.name}')">Clock In</button>
+          <button class="btn btn-out" id="btn-out-${s.id}" onclick="clockOut('${s.id}','${s.name}')" disabled>Clock Out</button>
+        </div>
+        <div class="session-box" id="box-${s.id}">
+          <div class="session-time" id="timer-${s.id}">0m 00s</div>
+          <div class="session-label" id="in-time-${s.id}">En turno</div>
+        </div>
+        <div class="status-msg" id="msg-${s.id}"></div>
+      </div>
+    </div>
+  `).join("");
+}
+
+buildGrid();
+</script>
+</body>
+</html>
